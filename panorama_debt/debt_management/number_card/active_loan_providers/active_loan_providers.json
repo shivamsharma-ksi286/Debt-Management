@@ -1,0 +1,20 @@
+{
+ "creation": "2026-09-20 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Number Card",
+ "document_type": "Loan Provider",
+ "filters_json": "[[\"Loan Provider\",\"is_active\",\"=\",\"1\"]]",
+ "function": "Count",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "label": "Active Loan Providers",
+ "modified": "2026-09-20 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Debt Management",
+ "name": "Active Loan Providers",
+ "owner": "Administrator",
+ "show_percentage_stats": 0,
+ "stats_time_interval": "Monthly",
+ "type": "Document Type"
+}

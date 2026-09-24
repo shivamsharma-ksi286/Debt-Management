@@ -1,0 +1,112 @@
+{
+ "app": "panorama_debt",
+ "charts": [
+  {
+   "chart_name": "Outstanding by Loan Type",
+   "label": "Outstanding by Loan Type"
+  },
+  {
+   "chart_name": "Loan Providers by Type",
+   "label": "Loan Providers by Type"
+  }
+ ],
+ "content": "[{\"id\":\"pdHdrDebt\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Debt Position</b></span>\",\"col\":12}},{\"id\":\"pdCardSanc\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Sanctioned\",\"col\":4}},{\"id\":\"pdCardOuts\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Outstanding\",\"col\":4}},{\"id\":\"pdCardActF\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Active Facilities\",\"col\":4}},{\"id\":\"pdChartOut\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Outstanding by Loan Type\",\"col\":12}},{\"id\":\"pdSpacer01\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"pdHdrProv\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Providers</b></span>\",\"col\":12}},{\"id\":\"pdCardActv\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Active Loan Providers\",\"col\":4}},{\"id\":\"pdCardBank\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Banks and NBFCs\",\"col\":4}},{\"id\":\"pdCardIcd\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Inter-Corporate Counterparties\",\"col\":4}},{\"id\":\"pdChartTyp\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Loan Providers by Type\",\"col\":12}},{\"id\":\"pdSpacer02\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"pdHdrMastr\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Masters</b></span>\",\"col\":12}},{\"id\":\"pdShortFac\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Debt Facility\",\"col\":4}},{\"id\":\"pdShortPrv\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Loan Provider\",\"col\":4}},{\"id\":\"pdCardMstr\",\"type\":\"card\",\"data\":{\"card_name\":\"Masters\",\"col\":4}}]",
+ "creation": "2026-09-20 00:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "liabilities",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Debt Management",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Masters",
+   "link_count": 2,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Loan Provider",
+   "link_count": 0,
+   "link_to": "Loan Provider",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "Loan Provider",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Debt Facility",
+   "link_count": 0,
+   "link_to": "Debt Facility",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-09-20 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Debt Management",
+ "name": "Debt Management",
+ "number_cards": [
+  {
+   "label": "Total Sanctioned",
+   "number_card_name": "Total Sanctioned"
+  },
+  {
+   "label": "Total Outstanding",
+   "number_card_name": "Total Outstanding"
+  },
+  {
+   "label": "Active Facilities",
+   "number_card_name": "Active Facilities"
+  },
+  {
+   "label": "Active Loan Providers",
+   "number_card_name": "Active Loan Providers"
+  },
+  {
+   "label": "Banks and NBFCs",
+   "number_card_name": "Banks and NBFCs"
+  },
+  {
+   "label": "Inter-Corporate Counterparties",
+   "number_card_name": "Inter-Corporate Counterparties"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "restrict_to_domain": "",
+ "roles": [],
+ "sequence_id": 1.0,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "Debt Facility",
+   "link_to": "Debt Facility",
+   "stats_filter": "[[\"Debt Facility\",\"status\",\"=\",\"Active\",false]]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Loan Provider",
+   "link_to": "Loan Provider",
+   "stats_filter": "[[\"Loan Provider\",\"is_active\",\"=\",1,false]]",
+   "type": "DocType"
+  }
+ ],
+ "title": "Debt Management"
+}

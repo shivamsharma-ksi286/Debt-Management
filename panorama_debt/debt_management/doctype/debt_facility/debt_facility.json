@@ -1,0 +1,455 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-09-21 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "company",
+  "loan_provider",
+  "provider_type",
+  "column_break_basic",
+  "loan_account_number",
+  "purpose",
+  "loan_type",
+  "is_revolving",
+  "in_scope",
+  "sanction_section",
+  "sanction_date",
+  "sanctioned_amount",
+  "disbursed_amount",
+  "column_break_sanction",
+  "disbursement_date",
+  "sanction_letter",
+  "interest_section",
+  "interest_rate_type",
+  "benchmark",
+  "benchmark_rate",
+  "spread",
+  "column_break_interest",
+  "rate_of_interest",
+  "repayment_tab",
+  "repayment_section",
+  "tenure_months",
+  "moratorium_months",
+  "moratorium_type",
+  "repayment_method",
+  "column_break_repayment",
+  "repayment_frequency",
+  "repayment_start_date",
+  "number_of_instalments",
+  "revolving_section",
+  "sanctioned_limit",
+  "bank_gl_account",
+  "column_break_revolving",
+  "drawing_power",
+  "limit_review_date",
+  "accounts_tab",
+  "accounts_section",
+  "loan_liability_account",
+  "column_break_accounts",
+  "interest_expense_account",
+  "status_tab",
+  "status_section",
+  "status",
+  "total_payable",
+  "total_interest_payable",
+  "outstanding_principal",
+  "column_break_status",
+  "total_principal_paid",
+  "total_interest_paid",
+  "next_due_date",
+  "next_due_amount",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "LOAN-.YYYY.-",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "loan_provider",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Loan Provider",
+   "options": "Loan Provider",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "loan_provider.provider_type",
+   "fieldname": "provider_type",
+   "fieldtype": "Data",
+   "label": "Provider Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_basic",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "loan_account_number",
+   "fieldtype": "Data",
+   "label": "Loan Account Number"
+  },
+  {
+   "fieldname": "purpose",
+   "fieldtype": "Data",
+   "label": "Purpose"
+  },
+  {
+   "fieldname": "loan_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Loan Type",
+   "options": "Term Loan\nWorking Capital Term Loan\nCash Credit\nOverdraft\nCOVID Loan\nChannel Finance\nPeak Season\nInter-Corporate Deposit\nOther",
+   "reqd": 1
+  },
+  {
+   "description": "Set automatically for Cash Credit and Overdraft. Revolving facilities carry no repayment schedule.",
+   "fieldname": "is_revolving",
+   "fieldtype": "Check",
+   "label": "Is Revolving",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "description": "Clear this to keep tracking the facility while excluding it from group debt totals.",
+   "fieldname": "in_scope",
+   "fieldtype": "Check",
+   "label": "In Scope"
+  },
+  {
+   "fieldname": "sanction_section",
+   "fieldtype": "Section Break",
+   "label": "Sanction"
+  },
+  {
+   "fieldname": "sanction_date",
+   "fieldtype": "Date",
+   "label": "Sanction Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sanctioned_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Sanctioned Amount",
+   "options": "Company:company:default_currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "disbursed_amount",
+   "fieldtype": "Currency",
+   "label": "Disbursed Amount",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "column_break_sanction",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "disbursement_date",
+   "fieldtype": "Date",
+   "label": "Disbursement Date"
+  },
+  {
+   "fieldname": "sanction_letter",
+   "fieldtype": "Attach",
+   "label": "Sanction Letter"
+  },
+  {
+   "fieldname": "interest_section",
+   "fieldtype": "Section Break",
+   "label": "Interest"
+  },
+  {
+   "default": "Fixed",
+   "fieldname": "interest_rate_type",
+   "fieldtype": "Select",
+   "label": "Interest Rate Type",
+   "options": "Fixed\nFloating"
+  },
+  {
+   "depends_on": "eval:doc.interest_rate_type=='Floating'",
+   "fieldname": "benchmark",
+   "fieldtype": "Select",
+   "label": "Benchmark",
+   "options": "\nI-EBLR\nMCLR\nRepo Linked\nOther"
+  },
+  {
+   "depends_on": "eval:doc.interest_rate_type=='Floating'",
+   "description": "Published rate of the chosen benchmark. Effective rate below is benchmark rate plus spread.",
+   "fieldname": "benchmark_rate",
+   "fieldtype": "Percent",
+   "label": "Benchmark Rate"
+  },
+  {
+   "depends_on": "eval:doc.interest_rate_type=='Floating'",
+   "fieldname": "spread",
+   "fieldtype": "Percent",
+   "label": "Spread"
+  },
+  {
+   "fieldname": "column_break_interest",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Effective annual rate. Filled from benchmark rate plus spread for floating facilities, and always editable. Zero is valid for interest-free inter-corporate loans.",
+   "fieldname": "rate_of_interest",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Rate of Interest (%)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "repayment_tab",
+   "fieldtype": "Tab Break",
+   "label": "Repayment"
+  },
+  {
+   "depends_on": "eval:!doc.is_revolving",
+   "fieldname": "repayment_section",
+   "fieldtype": "Section Break",
+   "label": "Repayment Terms"
+  },
+  {
+   "fieldname": "tenure_months",
+   "fieldtype": "Int",
+   "label": "Tenure (Months)"
+  },
+  {
+   "default": "0",
+   "fieldname": "moratorium_months",
+   "fieldtype": "Int",
+   "label": "Moratorium (Months)"
+  },
+  {
+   "depends_on": "eval:doc.moratorium_months > 0",
+   "fieldname": "moratorium_type",
+   "fieldtype": "Select",
+   "label": "Moratorium Type",
+   "options": "\nInterest Servicing\nFull Moratorium (Interest Capitalised)"
+  },
+  {
+   "fieldname": "repayment_method",
+   "fieldtype": "Select",
+   "label": "Repayment Method",
+   "options": "\nEqual Instalment (EMI)\nEqual Principal\nInterest Only then EMI\nInterest Only then Equal Principal\nBullet\nAs per Bank Schedule (Manual)"
+  },
+  {
+   "fieldname": "column_break_repayment",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Monthly",
+   "fieldname": "repayment_frequency",
+   "fieldtype": "Select",
+   "label": "Repayment Frequency",
+   "options": "Monthly\nQuarterly\nHalf Yearly\nYearly"
+  },
+  {
+   "fieldname": "repayment_start_date",
+   "fieldtype": "Date",
+   "label": "Repayment Start Date"
+  },
+  {
+   "description": "Total instalments including any moratorium instalments.",
+   "fieldname": "number_of_instalments",
+   "fieldtype": "Int",
+   "label": "Number of Instalments"
+  },
+  {
+   "depends_on": "eval:doc.is_revolving",
+   "fieldname": "revolving_section",
+   "fieldtype": "Section Break",
+   "label": "Revolving Facility"
+  },
+  {
+   "fieldname": "sanctioned_limit",
+   "fieldtype": "Currency",
+   "label": "Sanctioned Limit",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "description": "CC/OD bank ledger. Utilisation is read live from the GL, never keyed in.",
+   "fieldname": "bank_gl_account",
+   "fieldtype": "Link",
+   "label": "Bank GL Account",
+   "link_filters": "[[\"Account\",\"is_group\",\"=\",0]]",
+   "options": "Account"
+  },
+  {
+   "fieldname": "column_break_revolving",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "drawing_power",
+   "fieldtype": "Currency",
+   "label": "Drawing Power",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "limit_review_date",
+   "fieldtype": "Date",
+   "label": "Limit Review Date"
+  },
+  {
+   "fieldname": "accounts_tab",
+   "fieldtype": "Tab Break",
+   "label": "Accounts"
+  },
+  {
+   "fieldname": "accounts_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "loan_liability_account",
+   "fieldtype": "Link",
+   "label": "Loan Liability Account",
+   "link_filters": "[[\"Account\",\"root_type\",\"=\",\"Liability\"],[\"Account\",\"is_group\",\"=\",0]]",
+   "options": "Account"
+  },
+  {
+   "fieldname": "column_break_accounts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "interest_expense_account",
+   "fieldtype": "Link",
+   "label": "Interest Expense Account",
+   "link_filters": "[[\"Account\",\"root_type\",\"=\",\"Expense\"],[\"Account\",\"is_group\",\"=\",0]]",
+   "options": "Account"
+  },
+  {
+   "fieldname": "status_tab",
+   "fieldtype": "Tab Break",
+   "label": "Status"
+  },
+  {
+   "fieldname": "status_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nActive\nClosed\nForeclosed\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_payable",
+   "fieldtype": "Currency",
+   "label": "Total Payable",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_interest_payable",
+   "fieldtype": "Currency",
+   "label": "Total Interest Payable",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "outstanding_principal",
+   "fieldtype": "Currency",
+   "label": "Outstanding Principal",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_principal_paid",
+   "fieldtype": "Currency",
+   "label": "Total Principal Paid",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_interest_paid",
+   "fieldtype": "Currency",
+   "label": "Total Interest Paid",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "next_due_date",
+   "fieldtype": "Date",
+   "label": "Next Due Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "next_due_amount",
+   "fieldtype": "Currency",
+   "label": "Next Due Amount",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Debt Facility",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-09-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Debt Management",
+ "name": "Debt Facility",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "import": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "search_fields": "loan_provider,company,loan_type,loan_account_number",
+ "show_name_in_global_search": 1,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

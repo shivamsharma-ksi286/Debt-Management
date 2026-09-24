@@ -1,0 +1,135 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-09-21 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "instalment_number",
+  "due_date",
+  "outstanding_principal",
+  "principal_amount",
+  "interest_amount",
+  "other_charges",
+  "instalment_amount",
+  "closing_principal",
+  "payment_status",
+  "paid_date",
+  "paid_amount",
+  "payment_entry",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "fieldname": "instalment_number",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Instalment No"
+  },
+  {
+   "columns": 1,
+   "fieldname": "due_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Due Date",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "Balance at the START of this period. Interest below is charged on it.",
+   "fieldname": "outstanding_principal",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Outstanding Principal",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "columns": 2,
+   "fieldname": "principal_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Principal",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "columns": 1,
+   "fieldname": "interest_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Interest",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "other_charges",
+   "fieldtype": "Currency",
+   "label": "Other Charges",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "columns": 2,
+   "description": "Principal plus interest plus other charges.",
+   "fieldname": "instalment_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Instalment",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "closing_principal",
+   "fieldtype": "Currency",
+   "label": "Closing Principal",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "allow_on_submit": 1,
+   "columns": 1,
+   "default": "Unpaid",
+   "fieldname": "payment_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Unpaid\nPaid\nPartially Paid\nOverdue\nWaived"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "paid_date",
+   "fieldtype": "Date",
+   "label": "Paid Date"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "paid_amount",
+   "fieldtype": "Currency",
+   "label": "Paid Amount",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "payment_entry",
+   "fieldtype": "Link",
+   "label": "Payment Entry",
+   "options": "Journal Entry"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Debt Management",
+ "name": "Debt Repayment Schedule Detail",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -4,7 +4,7 @@ authors = [
     { name = "Ksolves India Limited", email = "sales@ksolves.com"}
 ]
 description = "Debt and borrowings management for the Panorama group of companies"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [

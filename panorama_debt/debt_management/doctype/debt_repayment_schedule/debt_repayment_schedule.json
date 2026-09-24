@@ -1,0 +1,323 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-09-21 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "company",
+  "loan_provider",
+  "loan",
+  "column_break_basic",
+  "posting_date",
+  "schedule_source",
+  "is_active",
+  "status",
+  "loan_details_section",
+  "loan_account_number",
+  "loan_type",
+  "sanctioned_amount",
+  "disbursed_amount",
+  "rate_of_interest",
+  "tenure_months",
+  "column_break_details",
+  "moratorium_months",
+  "moratorium_type",
+  "repayment_method",
+  "repayment_frequency",
+  "repayment_start_date",
+  "number_of_instalments",
+  "schedule_tab",
+  "repayment_schedule",
+  "totals_tab",
+  "total_principal",
+  "total_interest",
+  "total_payable",
+  "column_break_totals",
+  "total_principal_paid",
+  "total_interest_paid",
+  "outstanding_principal",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "LRS-.YYYY.-",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "loan_provider",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Loan Provider",
+   "options": "Loan Provider",
+   "reqd": 1
+  },
+  {
+   "description": "Only submitted, non-revolving facilities of the chosen company and provider.",
+   "fieldname": "loan",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Debt Facility",
+   "options": "Debt Facility",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_basic",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Today",
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Posting Date",
+   "reqd": 1
+  },
+  {
+   "default": "System Generated",
+   "fieldname": "schedule_source",
+   "fieldtype": "Select",
+   "label": "Schedule Source",
+   "options": "System Generated\nImported from Sanction Letter"
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "1",
+   "description": "Only one schedule per facility stays active. Submitting a new one revises the previous.",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nActive\nRevised\nClosed\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "loan_details_section",
+   "fieldtype": "Section Break",
+   "label": "Facility Details"
+  },
+  {
+   "fetch_from": "loan.loan_account_number",
+   "fieldname": "loan_account_number",
+   "fieldtype": "Data",
+   "label": "Loan Account Number",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "loan.loan_type",
+   "fieldname": "loan_type",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Loan Type",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "loan.sanctioned_amount",
+   "fieldname": "sanctioned_amount",
+   "fieldtype": "Currency",
+   "label": "Sanctioned Amount",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "loan.disbursed_amount",
+   "fieldname": "disbursed_amount",
+   "fieldtype": "Currency",
+   "label": "Disbursed Amount",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "loan.rate_of_interest",
+   "fieldname": "rate_of_interest",
+   "fieldtype": "Percent",
+   "label": "Rate of Interest (%)",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "loan.tenure_months",
+   "fieldname": "tenure_months",
+   "fieldtype": "Int",
+   "label": "Tenure (Months)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_details",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "loan.moratorium_months",
+   "fieldname": "moratorium_months",
+   "fieldtype": "Int",
+   "label": "Moratorium (Months)",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "loan.moratorium_type",
+   "fieldname": "moratorium_type",
+   "fieldtype": "Data",
+   "label": "Moratorium Type",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "loan.repayment_method",
+   "fieldname": "repayment_method",
+   "fieldtype": "Data",
+   "label": "Repayment Method",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "loan.repayment_frequency",
+   "fieldname": "repayment_frequency",
+   "fieldtype": "Data",
+   "label": "Repayment Frequency",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "loan.repayment_start_date",
+   "fieldname": "repayment_start_date",
+   "fieldtype": "Date",
+   "label": "Repayment Start Date",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "loan.number_of_instalments",
+   "fieldname": "number_of_instalments",
+   "fieldtype": "Int",
+   "label": "Number of Instalments",
+   "read_only": 1
+  },
+  {
+   "fieldname": "schedule_tab",
+   "fieldtype": "Tab Break",
+   "label": "Schedule"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "repayment_schedule",
+   "fieldtype": "Table",
+   "label": "Repayment Schedule",
+   "options": "Debt Repayment Schedule Detail"
+  },
+  {
+   "fieldname": "totals_tab",
+   "fieldtype": "Tab Break",
+   "label": "Totals"
+  },
+  {
+   "fieldname": "total_principal",
+   "fieldtype": "Currency",
+   "label": "Total Principal",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_interest",
+   "fieldtype": "Currency",
+   "label": "Total Interest",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_payable",
+   "fieldtype": "Currency",
+   "label": "Total Payable",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "total_principal_paid",
+   "fieldtype": "Currency",
+   "label": "Total Principal Paid",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "total_interest_paid",
+   "fieldtype": "Currency",
+   "label": "Total Interest Paid",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "outstanding_principal",
+   "fieldtype": "Currency",
+   "label": "Outstanding Principal",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Debt Repayment Schedule",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-09-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Debt Management",
+ "name": "Debt Repayment Schedule",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "import": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "search_fields": "loan,loan_provider,company,status",
+ "show_name_in_global_search": 1,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
