@@ -1,0 +1,65 @@
+{
+ "app": "panorama_debt",
+ "creation": "2026-09-25 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Workspace Sidebar",
+ "header_icon": "liabilities",
+ "idx": 0,
+ "items": [
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "home",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Home",
+   "link_to": "Debt Management",
+   "link_type": "Workspace",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "customer",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Loan Provider",
+   "link_to": "Loan Provider",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "notepad-text",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Debt Facility",
+   "link_to": "Debt Facility",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "list",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Debt Repayment Schedule",
+   "link_to": "Debt Repayment Schedule",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-09-25 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Debt Management",
+ "name": "Debt Management",
+ "owner": "Administrator",
+ "standard": 1,
+ "title": "Debt Management"
+}

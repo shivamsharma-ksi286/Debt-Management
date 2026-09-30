@@ -307,13 +307,60 @@ def summarise_schedule(rows):
 
 	Sums the already-rounded row figures rather than recomputing from the loan
 	terms, so the totals always reconcile with the rows on screen to the paisa.
-	"""
-	total_principal = sum((money(row["principal_amount"]) for row in rows), ZERO)
-	total_interest = sum((money(row["interest_amount"]) for row in rows), ZERO)
-	total_charges = sum((money(row.get("other_charges")) for row in rows), ZERO)
 
+	Total payable is the sum of the instalments, not principal plus interest.
+	The two agree for every ordinary schedule, but under a capitalising
+	moratorium they must not: that interest is rolled into the balance instead
+	of being billed, so it is repaid later as principal. Adding it to the
+	instalments as well would count it twice.
+	"""
 	return {
-		"total_principal": float(total_principal),
-		"total_interest": float(total_interest),
-		"total_payable": float(total_principal + total_interest + total_charges),
+		"total_principal": float(sum((money(row["principal_amount"]) for row in rows), ZERO)),
+		"total_interest": float(sum((money(row["interest_amount"]) for row in rows), ZERO)),
+		"total_payable": float(sum((money(row.get("instalment_amount")) for row in rows), ZERO)),
 	}
+
+
+def derive_balances(rows, opening_principal, capitalised_periods=0):
+	"""Work the running balances out from the principal and interest on each row.
+
+	Used for schedules this engine did not generate -- rows keyed in from a
+	sanction letter, or imported from a spreadsheet -- where the bank supplies
+	the principal and interest but not the balances. Deriving them rather than
+	trusting what was typed means the ledger column always follows from the
+	amounts beside it.
+
+	The first ``capitalised_periods`` rows that repay no principal are treated
+	as a full moratorium: their interest is added to the balance and nothing is
+	billed. A row inside that window that does repay principal is treated
+	normally, because the moratorium has evidently ended early.
+
+	Returns new row dicts; the input is left untouched so a caller can compare
+	what was typed against what follows.
+	"""
+	balance = money(opening_principal)
+	derived = []
+
+	for index, row in enumerate(rows):
+		principal = money(row.get("principal_amount"))
+		interest = money(row.get("interest_amount"))
+		charges = money(row.get("other_charges"))
+
+		if index < capitalised_periods and principal == ZERO:
+			closing = balance + interest
+			instalment = ZERO
+		else:
+			closing = balance - principal
+			instalment = principal + interest + charges
+
+		derived.append(
+			{
+				**row,
+				"outstanding_principal": float(balance),
+				"instalment_amount": float(instalment),
+				"closing_principal": float(closing),
+			}
+		)
+		balance = closing
+
+	return derived

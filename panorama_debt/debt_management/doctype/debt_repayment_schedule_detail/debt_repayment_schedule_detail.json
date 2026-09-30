@@ -18,14 +18,13 @@
   "paid_date",
   "paid_amount",
   "payment_entry",
-  "remarks"
+  "remarks",
+  "entry_posted_by_system"
  ],
  "fields": [
   {
-   "columns": 1,
    "fieldname": "instalment_number",
    "fieldtype": "Int",
-   "in_list_view": 1,
    "label": "Instalment No"
   },
   {
@@ -46,7 +45,7 @@
    "options": "Company:company:default_currency"
   },
   {
-   "columns": 2,
+   "columns": 1,
    "fieldname": "principal_amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -90,39 +89,58 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "Unpaid\nPaid\nPartially Paid\nOverdue\nWaived"
+   "no_copy": 1,
+   "options": "Unpaid\nPaid\nPartially Paid\nOverdue\nWaived",
+   "read_only": 1
   },
   {
    "allow_on_submit": 1,
    "fieldname": "paid_date",
    "fieldtype": "Date",
-   "label": "Paid Date"
+   "label": "Paid Date",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "allow_on_submit": 1,
    "fieldname": "paid_amount",
    "fieldtype": "Currency",
    "label": "Paid Amount",
-   "options": "Company:company:default_currency"
+   "no_copy": 1,
+   "options": "Company:company:default_currency",
+   "read_only": 1
   },
   {
    "allow_on_submit": 1,
+   "columns": 2,
    "fieldname": "payment_entry",
    "fieldtype": "Link",
-   "label": "Payment Entry",
-   "options": "Journal Entry"
+   "in_list_view": 1,
+   "label": "Payment Entry Reference",
+   "no_copy": 1,
+   "options": "Journal Entry",
+   "read_only": 1
   },
   {
    "allow_on_submit": 1,
    "fieldname": "remarks",
    "fieldtype": "Small Text",
    "label": "Remarks"
+  },
+  {
+   "description": "Set when this app posted the payment entry itself, so cancelling the schedule reverses only its own postings.",
+   "fieldname": "entry_posted_by_system",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Entry Posted by System",
+   "no_copy": 1,
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-21 00:00:00.000000",
+ "modified": "2026-09-24 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Debt Management",
  "name": "Debt Repayment Schedule Detail",

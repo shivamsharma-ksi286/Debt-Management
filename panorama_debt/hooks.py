@@ -53,4 +53,9 @@ add_to_apps_screen = [
 # Fixtures
 # --------
 # Build step 8 exports the Debt Manager / Debt User / Management roles here.
-# fixtures = []
+# The dashboard block ships with the app: it is app data, not site data, and a
+# fresh install should show the dues table without anyone rebuilding it. The
+# roles step extends this list.
+fixtures = [
+	{"dt": "Custom HTML Block", "filters": [["name", "=", "Upcoming Loan Dues"]]},
+]

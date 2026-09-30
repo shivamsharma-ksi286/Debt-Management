@@ -10,9 +10,14 @@
    "label": "Loan Providers by Type"
   }
  ],
- "content": "[{\"id\":\"pdHdrDebt\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Debt Position</b></span>\",\"col\":12}},{\"id\":\"pdCardSanc\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Sanctioned\",\"col\":4}},{\"id\":\"pdCardOuts\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Outstanding\",\"col\":4}},{\"id\":\"pdCardActF\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Active Facilities\",\"col\":4}},{\"id\":\"pdChartOut\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Outstanding by Loan Type\",\"col\":12}},{\"id\":\"pdSpacer01\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"pdHdrProv\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Providers</b></span>\",\"col\":12}},{\"id\":\"pdCardActv\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Active Loan Providers\",\"col\":4}},{\"id\":\"pdCardBank\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Banks and NBFCs\",\"col\":4}},{\"id\":\"pdCardIcd\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Inter-Corporate Counterparties\",\"col\":4}},{\"id\":\"pdChartTyp\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Loan Providers by Type\",\"col\":12}},{\"id\":\"pdSpacer02\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"pdHdrMastr\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Masters</b></span>\",\"col\":12}},{\"id\":\"pdShortFac\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Debt Facility\",\"col\":4}},{\"id\":\"pdShortPrv\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Loan Provider\",\"col\":4}},{\"id\":\"pdCardMstr\",\"type\":\"card\",\"data\":{\"card_name\":\"Masters\",\"col\":4}}]",
+ "content": "[{\"id\":\"pdHdrDebt\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Debt Position</b></span>\",\"col\":12}},{\"id\":\"pdCardSanc\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Sanctioned\",\"col\":4}},{\"id\":\"pdCardOuts\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Outstanding\",\"col\":4}},{\"id\":\"pdCardActF\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Active Facilities\",\"col\":4}},{\"id\":\"pdBlockDues\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"Upcoming Loan Dues\",\"col\":12}},{\"id\":\"pdChartOut\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Outstanding by Loan Type\",\"col\":12}},{\"id\":\"pdSpacer01\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"pdHdrProv\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Providers</b></span>\",\"col\":12}},{\"id\":\"pdCardActv\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Active Loan Providers\",\"col\":4}},{\"id\":\"pdCardBank\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Banks and NBFCs\",\"col\":4}},{\"id\":\"pdCardIcd\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Inter-Corporate Counterparties\",\"col\":4}},{\"id\":\"pdChartTyp\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Loan Providers by Type\",\"col\":12}},{\"id\":\"pdSpacer02\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"pdCardMstr\",\"type\":\"card\",\"data\":{\"card_name\":\"Masters\",\"col\":4}},{\"id\":\"pdCardRpts\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}},{\"id\":\"pdShortRpt\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Debt Facility Summary\",\"col\":4}}]",
  "creation": "2026-09-20 00:00:00.000000",
- "custom_blocks": [],
+ "custom_blocks": [
+  {
+   "custom_block_name": "Upcoming Loan Dues",
+   "label": "Upcoming Loan Dues"
+  }
+ ],
  "docstatus": 0,
  "doctype": "Workspace",
  "for_user": "",
@@ -23,10 +28,13 @@
  "label": "Debt Management",
  "links": [
   {
+   "dependencies": null,
    "hidden": 0,
    "is_query_report": 0,
    "label": "Masters",
-   "link_count": 2,
+   "link_count": 3,
+   "link_to": null,
+   "link_type": null,
    "onboard": 0,
    "type": "Card Break"
   },
@@ -51,9 +59,42 @@
    "link_type": "DocType",
    "onboard": 1,
    "type": "Link"
+  },
+  {
+   "dependencies": "Debt Facility",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Debt Repayment Schedule",
+   "link_count": 0,
+   "link_to": "Debt Repayment Schedule",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": null,
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Reports",
+   "link_count": 1,
+   "link_to": null,
+   "link_type": null,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "Debt Facility",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Debt Facility Summary",
+   "link_count": 0,
+   "link_to": "Debt Facility Summary",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
   }
  ],
- "modified": "2026-09-20 00:00:00.000000",
+ "modified": "2026-09-29 16:39:15.632716",
  "modified_by": "Administrator",
  "module": "Debt Management",
  "name": "Debt Management",
@@ -92,20 +133,12 @@
  "sequence_id": 1.0,
  "shortcuts": [
   {
-   "color": "Blue",
-   "doc_view": "List",
-   "label": "Debt Facility",
-   "link_to": "Debt Facility",
-   "stats_filter": "[[\"Debt Facility\",\"status\",\"=\",\"Active\",false]]",
-   "type": "DocType"
-  },
-  {
-   "color": "Grey",
-   "doc_view": "List",
-   "label": "Loan Provider",
-   "link_to": "Loan Provider",
-   "stats_filter": "[[\"Loan Provider\",\"is_active\",\"=\",1,false]]",
-   "type": "DocType"
+   "color": "Orange",
+   "doc_view": "",
+   "label": "Debt Facility Summary",
+   "link_to": "Debt Facility Summary",
+   "stats_filter": null,
+   "type": "Report"
   }
  ],
  "title": "Debt Management"

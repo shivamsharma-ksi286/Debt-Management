@@ -13,6 +13,9 @@ frappe.ui.form.on("Debt Facility", {
 		frm.set_query("loan_liability_account", company_account({ root_type: "Liability" }));
 		frm.set_query("interest_expense_account", company_account({ root_type: "Expense" }));
 		frm.set_query("bank_gl_account", company_account());
+		const bank_filter = company_account({ account_type: ["in", ["Bank", "Cash"]] });
+		frm.set_query("bank_account", bank_filter);
+		frm.set_query("repayment_bank_account", bank_filter);
 
 		frm.set_query("loan_provider", () => ({ filters: { is_active: 1 } }));
 	},
@@ -37,7 +40,30 @@ frappe.ui.form.on("Debt Facility", {
 		// Carrying accounts across a company change would post into the
 		// previous company's ledger; the server rejects that, so clear them
 		// and let the provider defaults refill for the new company.
-		["loan_liability_account", "interest_expense_account", "bank_gl_account"].forEach((field) =>
+		[
+			"loan_liability_account",
+			"interest_expense_account",
+			"bank_gl_account",
+			"bank_account",
+			"repayment_bank_account",
+		].forEach((field) => frm.set_value(field, null));
+	},
+
+	bank_account(frm) {
+		// Most groups repay from the account the money landed in, so offer that
+		// as the starting point. Only ever fills a blank -- a deliberate
+		// different repayment bank is never overwritten.
+		if (frm.doc.bank_account && !frm.doc.repayment_bank_account) {
+			frm.set_value("repayment_bank_account", frm.doc.bank_account);
+		}
+	},
+
+	loan_provider(frm) {
+		// The defaults on the form belong to the previous provider. Clearing
+		// them lets apply_provider_account_defaults refill from the new one on
+		// save; a value left behind would be kept, because that method only
+		// fills blanks.
+		["loan_liability_account", "interest_expense_account"].forEach((field) =>
 			frm.set_value(field, null)
 		);
 	},

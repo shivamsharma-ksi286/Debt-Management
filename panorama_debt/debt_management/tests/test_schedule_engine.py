@@ -13,6 +13,7 @@ from itertools import pairwise
 
 from panorama_debt.debt_management.schedule_engine import (
 	compute_emi,
+	derive_balances,
 	generate_schedule,
 	get_due_dates,
 	money,
@@ -327,6 +328,106 @@ class TestInvalidInput(unittest.TestCase):
 
 	def test_undated_schedule_still_generates(self):
 		self.assertEqual(get_due_dates(None, 3, "Monthly"), [None, None, None])
+
+
+class TestCapitalisedTotals(ScheduleAssertions):
+	"""Total payable must be what is billed, not principal plus interest.
+
+	Under a capitalising moratorium the accrued interest is rolled into the
+	balance instead of being billed, and is repaid later as principal. Counting
+	it in total payable as well would charge the group for it twice.
+	"""
+
+	principal = 1000000.00
+
+	def setUp(self):
+		self.schedule = generate_schedule(
+			principal=self.principal,
+			rate_of_interest=12.0,
+			number_of_instalments=15,
+			moratorium_months=3,
+			moratorium_type="Full Moratorium (Interest Capitalised)",
+			repayment_method="Interest Only then EMI",
+			repayment_frequency="Monthly",
+		)
+		self.totals = summarise_schedule(self.schedule)
+
+	def test_total_payable_is_the_sum_of_instalments(self):
+		billed = round(sum(row["instalment_amount"] for row in self.schedule), 2)
+		self.assertEqual(self.totals["total_payable"], billed)
+
+	def test_capitalised_interest_is_not_billed_twice(self):
+		# The three moratorium instalments bill nothing at all.
+		self.assertEqual([row["instalment_amount"] for row in self.schedule[:3]], [0.0, 0.0, 0.0])
+		naive = self.totals["total_principal"] + self.totals["total_interest"]
+		self.assertLess(self.totals["total_payable"], naive)
+		# The gap is exactly the interest that was rolled into the balance.
+		capitalised = round(sum(row["interest_amount"] for row in self.schedule[:3]), 2)
+		self.assertAlmostEqual(naive - self.totals["total_payable"], capitalised, places=2)
+
+	def test_ordinary_schedule_totals_still_add_up(self):
+		plain = generate_schedule(
+			principal=self.principal,
+			rate_of_interest=12.0,
+			number_of_instalments=12,
+			repayment_method="Equal Principal",
+			repayment_frequency="Monthly",
+		)
+		totals = summarise_schedule(plain)
+		self.assertAlmostEqual(
+			totals["total_payable"], totals["total_principal"] + totals["total_interest"], places=2
+		)
+
+
+class TestDeriveBalances(ScheduleAssertions):
+	"""Balances worked out from principal and interest, for rows we did not generate."""
+
+	def test_derives_running_balances(self):
+		rows = [
+			{"principal_amount": 250000.00, "interest_amount": 7500.00},
+			{"principal_amount": 250000.00, "interest_amount": 5625.00},
+			{"principal_amount": 250000.00, "interest_amount": 3750.00},
+			{"principal_amount": 250000.00, "interest_amount": 1875.00},
+		]
+		derived = derive_balances(rows, 1000000.00)
+		self.assertEqual(
+			[r["outstanding_principal"] for r in derived], [1000000.00, 750000.00, 500000.00, 250000.00]
+		)
+		self.assertEqual([r["closing_principal"] for r in derived], [750000.00, 500000.00, 250000.00, 0.00])
+		self.assertEqual(
+			[r["instalment_amount"] for r in derived], [257500.00, 255625.00, 253750.00, 251875.00]
+		)
+
+	def test_does_not_mutate_the_input(self):
+		rows = [{"principal_amount": 100.00, "interest_amount": 1.00}]
+		derive_balances(rows, 100.00)
+		self.assertEqual(rows, [{"principal_amount": 100.00, "interest_amount": 1.00}])
+
+	def test_other_charges_join_the_instalment(self):
+		rows = [{"principal_amount": 100.00, "interest_amount": 1.00, "other_charges": 25.00}]
+		self.assertEqual(derive_balances(rows, 100.00)[0]["instalment_amount"], 126.00)
+
+	def test_capitalised_rows_grow_the_balance_and_bill_nothing(self):
+		rows = [
+			{"principal_amount": 0.00, "interest_amount": 10000.00},
+			{"principal_amount": 0.00, "interest_amount": 10100.00},
+			{"principal_amount": 1020100.00, "interest_amount": 10201.00},
+		]
+		derived = derive_balances(rows, 1000000.00, capitalised_periods=2)
+		self.assertEqual([r["outstanding_principal"] for r in derived], [1000000.00, 1010000.00, 1020100.00])
+		self.assertEqual([r["instalment_amount"] for r in derived][:2], [0.00, 0.00])
+		self.assertEqual(derived[-1]["closing_principal"], 0.00)
+
+	def test_a_row_repaying_principal_ends_the_moratorium_early(self):
+		rows = [
+			{"principal_amount": 0.00, "interest_amount": 1000.00},
+			{"principal_amount": 50000.00, "interest_amount": 1010.00},
+		]
+		derived = derive_balances(rows, 100000.00, capitalised_periods=5)
+		self.assertEqual(derived[0]["closing_principal"], 101000.00)
+		# row 2 repays principal, so it is billed normally despite the window
+		self.assertEqual(derived[1]["instalment_amount"], 51010.00)
+		self.assertEqual(derived[1]["closing_principal"], 51000.00)
 
 
 if __name__ == "__main__":

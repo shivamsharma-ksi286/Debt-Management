@@ -4,9 +4,15 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, formatdate, getdate
+from frappe.utils import flt, formatdate, get_link_to_form, getdate
 
+from panorama_debt.debt_management.accounting import (
+	cancel_journal_entries,
+	make_journal_entry,
+	validate_not_future,
+)
 from panorama_debt.debt_management.doctype.loan_provider.loan_provider import get_provider_accounts
+from panorama_debt.debt_management.schedule_engine import ZERO, money
 
 # Facility types that revolve: drawn and repaid at will against a limit, with no
 # instalment schedule to amortise.
@@ -21,6 +27,21 @@ REPAYMENT_TERM_FIELDS = (
 	"repayment_method",
 	"repayment_start_date",
 	"number_of_instalments",
+	"bank_account",
+	"repayment_bank_account",
+	"disbursement_entry_posted",
+)
+
+# Ledgers the disbursed money may land in. A borrowing is received into a bank
+# or cash account; anything else means the wrong field was picked.
+BANK_ACCOUNT_TYPES = ("Bank", "Cash")
+
+# Figures a freshly submitted facility must start from, whatever a copied or
+# amended document arrived carrying.
+ZEROED_ON_SUBMIT = (
+	"total_principal_paid",
+	"total_interest_paid",
+	"next_due_amount",
 )
 
 # Which side of the books each posting account has to sit on.
@@ -40,12 +61,15 @@ class DebtFacility(Document):
 		from frappe.types import DF
 
 		amended_from: DF.Link | None
+		bank_account: DF.Link | None
 		bank_gl_account: DF.Link | None
 		benchmark: DF.Literal["", "I-EBLR", "MCLR", "Repo Linked", "Other"]
 		benchmark_rate: DF.Percent
 		company: DF.Link
 		disbursed_amount: DF.Currency
 		disbursement_date: DF.Date | None
+		disbursement_entry_posted: DF.Literal["", "Yes", "No"]
+		disbursement_journal_entry: DF.Link | None
 		drawing_power: DF.Currency
 		in_scope: DF.Check
 		interest_expense_account: DF.Link | None
@@ -76,6 +100,7 @@ class DebtFacility(Document):
 		provider_type: DF.Data | None
 		purpose: DF.Data | None
 		rate_of_interest: DF.Percent
+		repayment_bank_account: DF.Link | None
 		repayment_frequency: DF.Literal["Monthly", "Quarterly", "Half Yearly", "Yearly"]
 		repayment_method: DF.Literal[
 			"",
@@ -107,7 +132,9 @@ class DebtFacility(Document):
 		self.validate_amounts()
 		self.validate_dates()
 		self.validate_repayment_terms()
+		self.validate_disbursement_entry_posted()
 		self.validate_accounts()
+		self.validate_bank_accounts()
 		self.set_status()
 
 	def before_submit(self):
@@ -115,20 +142,71 @@ class DebtFacility(Document):
 
 		Outstanding principal is seeded from the disbursed amount rather than
 		the sanctioned amount, because a sanction the group has not drawn is
-		not yet a debt. A revolving facility is left at zero -- its utilisation
-		is read live from the GL, never carried on this document.
+		not yet a debt. It is set unconditionally, along with zeroing the paid
+		and next-due figures, so an amended or copied facility cannot open
+		carrying the previous document's position. A revolving facility is left
+		alone -- its utilisation is read live from the GL, never carried here.
 		"""
 		self.status = "Active"
 
-		if not self.is_revolving and not flt(self.outstanding_principal):
-			self.outstanding_principal = flt(self.disbursed_amount)
+		if self.is_revolving:
+			return
+
+		self.validate_posting_accounts()
+		self.validate_disbursement_ready()
+
+		self.outstanding_principal = flt(self.disbursed_amount)
+		for fieldname in ZEROED_ON_SUBMIT:
+			self.set(fieldname, 0)
+		self.next_due_date = None
+
+	def on_submit(self):
+		"""Book the receipt of the money, when the group has not booked it already.
+
+		Only "No" posts: it is the user saying the ledger does not yet know
+		about this disbursement. The field is then flipped to "Yes" so the
+		answer on a submitted facility reads as the state of the world rather
+		than as the instruction that produced it, and so an amendment cannot
+		post the same receipt twice.
+		"""
+		if self.is_revolving or self.disbursement_entry_posted != "No":
+			return
+
+		entry = make_journal_entry(
+			company=self.company,
+			posting_date=self.disbursement_date,
+			voucher_type="Bank Entry",
+			reference_no=self.name,
+			remark=_("Disbursement of {0}").format(self.name),
+			loan_provider=self.loan_provider,
+			lines=[
+				(self.bank_account, money(self.disbursed_amount), ZERO),
+				(self.loan_liability_account, ZERO, money(self.disbursed_amount)),
+			],
+		)
+
+		self.db_set("disbursement_journal_entry", entry)
+		self.db_set("disbursement_entry_posted", "Yes")
+
+		frappe.msgprint(
+			_("Disbursement posted as {0}.").format(get_link_to_form("Journal Entry", entry)),
+			alert=True,
+			indicator="green",
+		)
 
 	def on_cancel(self):
-		"""Mark a cancelled facility so it stops reading as live debt.
+		"""Reverse the disbursement entry and mark the facility cancelled.
 
-		Written with db_set because the status fields are read-only and the
-		document is already past submission at this point.
+		This has to run in on_cancel rather than before_cancel. By the time
+		on_cancel fires, _cancel has already saved docstatus 2, so this
+		facility no longer counts as a submitted back-link and the Journal
+		Entry will cancel. From before_cancel the facility would still be
+		submitted and its own link would block the entry.
+
+		Only the disbursement entry is touched. Repayment entries belong to the
+		schedule and are cancelled by it.
 		"""
+		cancel_journal_entries([self.disbursement_journal_entry])
 		self.db_set("status", "Cancelled")
 
 	def set_is_revolving(self):
@@ -294,6 +372,106 @@ class DebtFacility(Document):
 				title=_("Account Belongs to Another Company"),
 			)
 
+	def validate_disbursement_entry_posted(self):
+		"""A term facility has to say whether the receipt is already in the books.
+
+		There is deliberately no default. The answer decides whether the system
+		posts a Journal Entry on submit, and a wrong default would either
+		double-book a disbursement the accountant already entered or leave the
+		ledger silently short by the whole loan.
+		"""
+		if self.is_revolving or self.disbursement_entry_posted:
+			return
+
+		frappe.throw(
+			_(
+				"Say whether the disbursement entry has already been posted. There is no default, because the answer decides whether this facility posts its own Journal Entry."
+			),
+			title=_("Disbursement Entry Posted Is Required"),
+		)
+
+	def validate_bank_accounts(self):
+		"""Vet both bank fields through the one shared rule."""
+		for fieldname in ("bank_account", "repayment_bank_account"):
+			if self.get(fieldname):
+				validate_bank_account(
+					self.get(fieldname),
+					company=self.company,
+					loan_account=self.loan_liability_account,
+					label=_(self.meta.get_label(fieldname)),
+				)
+
+	def before_update_after_submit(self):
+		"""Re-vet what an Update on a submitted facility is allowed to change.
+
+		Frappe does not run validate() on this path -- only before_save and
+		before_submit branches do -- so without this the one field that stays
+		editable after submission would never be checked again.
+		"""
+		self.validate_bank_accounts()
+
+	def validate_posting_accounts(self):
+		"""Require the accounts the facility will post to, at submission time.
+
+		Left out of validate() so a facility can be drafted before the chart of
+		accounts is ready. By submission the accounts have to exist: the
+		disbursement posts against the loan account, and every repayment will
+		post interest against the interest account. An interest-free
+		inter-corporate loan never posts interest, so it never needs one.
+		"""
+		if not self.loan_liability_account:
+			frappe.throw(
+				_(
+					"Set the Loan Account before submitting. The disbursement and every repayment post against it."
+				),
+				title=_("Loan Account Required"),
+			)
+
+		if not self.repayment_bank_account:
+			frappe.throw(
+				_(
+					"Set the Bank Account (Repayment of Loan) before submitting. Every instalment entry credits it."
+				),
+				title=_("Repayment Bank Account Required"),
+			)
+
+		if flt(self.rate_of_interest) > 0 and not self.interest_expense_account:
+			frappe.throw(
+				_(
+					"Set the Interest Account before submitting. This facility carries interest at {0}%."
+				).format(frappe.bold(self.rate_of_interest)),
+				title=_("Interest Account Required"),
+			)
+
+	def validate_disbursement_ready(self):
+		"""Check there is a disbursement to post before promising to post one."""
+		if self.disbursement_entry_posted != "No":
+			return
+
+		if flt(self.disbursed_amount) <= 0:
+			frappe.throw(
+				_(
+					"Nothing has been disbursed, so there is no entry to post. Enter the Disbursed Amount, or set Disbursement Entry Posted to Yes."
+				),
+				title=_("Nothing to Disburse"),
+			)
+
+		if not self.disbursement_date:
+			frappe.throw(
+				_("Set the Disbursement Date. It is the posting date of the entry this facility will book."),
+				title=_("Disbursement Date Required"),
+			)
+
+		validate_not_future(self.disbursement_date, "Disbursement Date")
+
+		if not self.bank_account:
+			frappe.throw(
+				_(
+					"Set the Bank Account the money was received into, so the disbursement entry has somewhere to debit."
+				),
+				title=_("Bank Account Required"),
+			)
+
 	def set_status(self):
 		"""Keep the status in step with the document state.
 
@@ -309,6 +487,80 @@ class DebtFacility(Document):
 	def fmt_money(self, value):
 		"""Format an amount in the facility's own company currency for a message."""
 		return frappe.utils.fmt_money(flt(value), currency=get_company_currency(self.company))
+
+
+def validate_ledger_account(account, *, company, root_type, label):
+	"""Check a posting account a caller chose is one this company can post to.
+
+	The payment dialog lets a user override which loan or interest ledger an
+	instalment posts against -- a facility can be reclassified, or one month's
+	interest booked to a different head. The override still has to be a real
+	postable ledger of the borrowing company on the right side of the books,
+	which is exactly what the facility's own fields are held to.
+	"""
+	detail = frappe.db.get_value("Account", account, ["root_type", "is_group", "company"], as_dict=True)
+
+	if not detail or detail.company != company:
+		frappe.throw(
+			_("{0} {1} does not belong to {2}.").format(label, frappe.bold(account), frappe.bold(company)),
+			title=_("Account Belongs to Another Company"),
+		)
+
+	if detail.is_group:
+		frappe.throw(
+			_("{0} {1} is a group account. Pick a ledger account that can be posted to.").format(
+				label, frappe.bold(account)
+			),
+			title=_("Group Account Selected"),
+		)
+
+	if detail.root_type != root_type:
+		frappe.throw(
+			_("{0} {1} is {2}, but it has to be {3}.").format(
+				label, frappe.bold(account), frappe.bold(_(detail.root_type)), frappe.bold(_(root_type))
+			),
+			title=_("Wrong Account Type"),
+		)
+
+
+def validate_bank_account(account, *, company, loan_account, label):
+	"""The one rule every bank account in this app is held to.
+
+	Used for both fields on the facility and for whatever bank the payment
+	dialog passes in, so a ledger that would be refused on the facility cannot
+	slip in through the popup instead. Money must leave or arrive in a real
+	bank or cash ledger of the borrowing company, and never in the loan account
+	itself -- that would debit and credit the same ledger and post nothing.
+	"""
+	detail = frappe.db.get_value("Account", account, ["account_type", "is_group", "company"], as_dict=True)
+
+	if not detail or detail.company != company:
+		frappe.throw(
+			_("{0} {1} does not belong to {2}.").format(label, frappe.bold(account), frappe.bold(company)),
+			title=_("Account Belongs to Another Company"),
+		)
+
+	if detail.is_group:
+		frappe.throw(
+			_("{0} {1} is a group account. Pick a ledger account that can be posted to.").format(
+				label, frappe.bold(account)
+			),
+			title=_("Group Account Selected"),
+		)
+
+	if detail.account_type not in BANK_ACCOUNT_TYPES:
+		frappe.throw(
+			_("{0} {1} is not a Bank or Cash account.").format(label, frappe.bold(account)),
+			title=_("Not a Bank Account"),
+		)
+
+	if loan_account and account == loan_account:
+		frappe.throw(
+			_(
+				"{0} cannot be the same account as the Loan Account. The entry would debit and credit the same ledger and post nothing."
+			).format(label),
+			title=_("Same Account on Both Sides"),
+		)
 
 
 def get_company_currency(company):

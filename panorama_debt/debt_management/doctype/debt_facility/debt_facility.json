@@ -23,6 +23,8 @@
   "column_break_sanction",
   "disbursement_date",
   "sanction_letter",
+  "disbursement_entry_posted",
+  "disbursement_journal_entry",
   "interest_section",
   "interest_rate_type",
   "benchmark",
@@ -49,8 +51,10 @@
   "accounts_tab",
   "accounts_section",
   "loan_liability_account",
-  "column_break_accounts",
   "interest_expense_account",
+  "column_break_accounts",
+  "bank_account",
+  "repayment_bank_account",
   "status_tab",
   "status_section",
   "status",
@@ -172,6 +176,24 @@
    "fieldname": "sanction_letter",
    "fieldtype": "Attach",
    "label": "Sanction Letter"
+  },
+  {
+   "description": "No means the system posts the disbursement Journal Entry when this facility is submitted. Yes means the receipt is already booked in the ledger and nothing is posted.",
+   "fieldname": "disbursement_entry_posted",
+   "fieldtype": "Select",
+   "label": "Disbursement Entry Posted",
+   "mandatory_depends_on": "eval:!doc.is_revolving && doc.docstatus==0",
+   "no_copy": 1,
+   "options": "\nYes\nNo"
+  },
+  {
+   "depends_on": "eval:doc.disbursement_journal_entry",
+   "fieldname": "disbursement_journal_entry",
+   "fieldtype": "Link",
+   "label": "Disbursement Journal Entry",
+   "no_copy": 1,
+   "options": "Journal Entry",
+   "read_only": 1
   },
   {
    "fieldname": "interest_section",
@@ -321,8 +343,15 @@
   {
    "fieldname": "loan_liability_account",
    "fieldtype": "Link",
-   "label": "Loan Liability Account",
+   "label": "Loan Account",
    "link_filters": "[[\"Account\",\"root_type\",\"=\",\"Liability\"],[\"Account\",\"is_group\",\"=\",0]]",
+   "options": "Account"
+  },
+  {
+   "fieldname": "interest_expense_account",
+   "fieldtype": "Link",
+   "label": "Interest Account",
+   "link_filters": "[[\"Account\",\"root_type\",\"=\",\"Expense\"],[\"Account\",\"is_group\",\"=\",0]]",
    "options": "Account"
   },
   {
@@ -330,10 +359,24 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "interest_expense_account",
+   "depends_on": "eval:!doc.is_revolving",
+   "description": "Debited by the disbursement entry.",
+   "fieldname": "bank_account",
    "fieldtype": "Link",
-   "label": "Interest Expense Account",
-   "link_filters": "[[\"Account\",\"root_type\",\"=\",\"Expense\"],[\"Account\",\"is_group\",\"=\",0]]",
+   "label": "Bank Account (Receipt of Loan Amount)",
+   "link_filters": "[[\"Account\",\"is_group\",\"=\",0],[\"Account\",\"account_type\",\"in\",[\"Bank\",\"Cash\"]]]",
+   "mandatory_depends_on": "eval:doc.disbursement_entry_posted==\"No\" && doc.docstatus==0",
+   "options": "Account"
+  },
+  {
+   "allow_on_submit": 1,
+   "depends_on": "eval:!doc.is_revolving",
+   "description": "Credited by instalment entries; the default in Make Payment Entry.",
+   "fieldname": "repayment_bank_account",
+   "fieldtype": "Link",
+   "label": "Bank Account (Repayment of Loan)",
+   "link_filters": "[[\"Account\",\"is_group\",\"=\",0],[\"Account\",\"account_type\",\"in\",[\"Bank\",\"Cash\"]]]",
+   "mandatory_depends_on": "eval:!doc.is_revolving",
    "options": "Account"
   },
   {
@@ -352,6 +395,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Status",
+   "no_copy": 1,
    "options": "Draft\nActive\nClosed\nForeclosed\nCancelled",
    "read_only": 1
   },
@@ -359,6 +403,7 @@
    "fieldname": "total_payable",
    "fieldtype": "Currency",
    "label": "Total Payable",
+   "no_copy": 1,
    "options": "Company:company:default_currency",
    "read_only": 1
   },
@@ -366,6 +411,7 @@
    "fieldname": "total_interest_payable",
    "fieldtype": "Currency",
    "label": "Total Interest Payable",
+   "no_copy": 1,
    "options": "Company:company:default_currency",
    "read_only": 1
   },
@@ -373,6 +419,7 @@
    "fieldname": "outstanding_principal",
    "fieldtype": "Currency",
    "label": "Outstanding Principal",
+   "no_copy": 1,
    "options": "Company:company:default_currency",
    "read_only": 1
   },
@@ -384,6 +431,7 @@
    "fieldname": "total_principal_paid",
    "fieldtype": "Currency",
    "label": "Total Principal Paid",
+   "no_copy": 1,
    "options": "Company:company:default_currency",
    "read_only": 1
   },
@@ -391,6 +439,7 @@
    "fieldname": "total_interest_paid",
    "fieldtype": "Currency",
    "label": "Total Interest Paid",
+   "no_copy": 1,
    "options": "Company:company:default_currency",
    "read_only": 1
   },
@@ -398,12 +447,14 @@
    "fieldname": "next_due_date",
    "fieldtype": "Date",
    "label": "Next Due Date",
+   "no_copy": 1,
    "read_only": 1
   },
   {
    "fieldname": "next_due_amount",
    "fieldtype": "Currency",
    "label": "Next Due Amount",
+   "no_copy": 1,
    "options": "Company:company:default_currency",
    "read_only": 1
   },
@@ -421,7 +472,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-21 00:00:00.000000",
+ "modified": "2026-09-29 16:36:36.214013",
  "modified_by": "Administrator",
  "module": "Debt Management",
  "name": "Debt Facility",

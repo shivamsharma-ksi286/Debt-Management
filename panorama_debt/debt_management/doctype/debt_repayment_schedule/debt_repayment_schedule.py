@@ -3,18 +3,57 @@
 
 import frappe
 from frappe import _
+from frappe.desk.utils import provide_binary_file
 from frappe.model.document import Document
-from frappe.utils import flt, getdate
+from frappe.utils import escape_html, flt, formatdate, getdate, nowdate
+from frappe.utils.csvutils import read_csv_content
+from frappe.utils.xlsxutils import make_xlsx, read_xlsx_file_from_attached_file
 
+from panorama_debt.debt_management.accounting import (
+	cancel_journal_entries,
+	journal_entry_reference_error,
+	make_journal_entry,
+	validate_settlement_date,
+)
+from panorama_debt.debt_management.doctype.debt_facility.debt_facility import (
+	validate_bank_account,
+	validate_ledger_account,
+)
 from panorama_debt.debt_management.schedule_engine import (
 	INTEREST_CAPITALISED,
 	MANUAL,
 	MONTHS_PER_PERIOD,
+	ZERO,
+	derive_balances,
 	generate_schedule,
 	get_moratorium_periods,
 	money,
 	summarise_schedule,
 )
+from panorama_debt.debt_management.schedule_import import parse_schedule_rows
+
+# Schedule sources whose balances this app derives rather than trusts. The bank
+# supplies principal and interest on these; the ledger columns follow.
+DERIVED_BALANCE_SOURCES = ("Imported from Sanction Letter",)
+
+# Rows a payment may still be posted against.
+PAYABLE_STATUSES = ("Unpaid", "Overdue")
+
+# Ledgers a repayment may be paid out of.
+BANK_ACCOUNT_TYPES = ("Bank", "Cash")
+
+# The upload template, in the order the columns appear.
+TEMPLATE_COLUMNS = (
+	("due_date", "Due Date"),
+	("principal_amount", "Principal Amount"),
+	("interest_amount", "Interest"),
+	("payment_status", "Status"),
+	("payment_entry", "Payment Entry Reference"),
+)
+
+# Beyond this many problems the message becomes unreadable; the rest are
+# counted instead of listed.
+MAX_REPORTED_ERRORS = 25
 
 # Schedules must reconcile to the facility to the paisa; this is the slack
 # allowed when comparing two already-rounded money figures.
@@ -79,13 +118,44 @@ class DebtRepaymentSchedule(Document):
 
 	def validate(self):
 		self.validate_facility()
+		self.validate_due_dates_increase()
 		self.renumber_instalments()
+		self.apply_derived_balances()
 		self.calculate_totals()
 		self.set_status()
 
 	def before_submit(self):
 		self.validate_schedule_not_empty()
 		self.validate_schedule_reconciles()
+		self.validate_settled_instalments_carried_over()
+
+	def before_cancel(self):
+		"""Refuse to cancel a superseded schedule that still owns live postings.
+
+		A Revised schedule is no longer the facility's record of what is owed,
+		but its system-posted entries are still the ledger's record of what was
+		actually paid. Cancelling it would reverse real repayments that the
+		live schedule believes have happened. Cancel the live schedule first,
+		or reverse the individual payments, so the reversal is deliberate.
+		"""
+		if self.status != "Revised":
+			return
+
+		live = [
+			row.payment_entry
+			for row in self.repayment_schedule
+			if row.entry_posted_by_system
+			and row.payment_entry
+			and frappe.db.get_value("Journal Entry", row.payment_entry, "docstatus") == 1
+		]
+
+		if live:
+			frappe.throw(
+				_(
+					"This schedule has been revised but still owns {0} submitted payment entries ({1}). Reverse those payments before cancelling it."
+				).format(len(live), frappe.bold(", ".join(live[:5]))),
+				title=_("Revised Schedule Has Live Entries"),
+			)
 
 	def on_submit(self):
 		"""Make this the facility's live schedule and push the numbers onto it."""
@@ -93,15 +163,31 @@ class DebtRepaymentSchedule(Document):
 		self.update_facility()
 
 	def on_cancel(self):
-		"""Stand the schedule down without silently promoting another one.
+		"""Stand the schedule down, reversing only the postings it made itself.
 
 		The previous schedule is deliberately NOT reactivated: which schedule
 		should be live after a cancellation is a business decision, and
 		guessing would quietly resurrect terms nobody re-checked.
+
+		Entries a user recorded by hand are left alone. This app did not post
+		them, does not know what else they cover, and must not reverse
+		somebody else's journal.
+
+		The facility is only reset if this schedule was the live one. A
+		superseded schedule cancelling itself must not wipe figures that now
+		belong to its replacement.
 		"""
+		was_active = bool(self.is_active)
+
+		cancel_journal_entries(
+			[row.payment_entry for row in self.repayment_schedule if row.entry_posted_by_system]
+		)
+
 		self.db_set("status", "Cancelled")
 		self.db_set("is_active", 0)
-		self.update_facility(clear=True)
+
+		if was_active:
+			self.update_facility(clear=True)
 
 	# --- validation ---------------------------------------------------------
 
@@ -156,6 +242,30 @@ class DebtRepaymentSchedule(Document):
 		"""
 		for index, row in enumerate(self.repayment_schedule, start=1):
 			row.instalment_number = index
+
+	def validate_due_dates_increase(self):
+		"""Instalments must run forwards in time, however the rows got here.
+
+		The upload path already refuses an out-of-order file, but rows can also
+		be typed, pasted or dragged in the grid. Every balance in the schedule
+		is derived by walking the rows in order, so a due date that goes
+		backwards silently misstates the whole ledger column.
+		"""
+		previous = None
+
+		for row in self.repayment_schedule:
+			if not row.due_date:
+				continue
+
+			due = getdate(row.due_date)
+			if previous and due <= previous:
+				frappe.throw(
+					_(
+						"Instalment {0} falls due on {1}, which is not after the previous instalment's {2}. Due dates must run forwards."
+					).format(row.idx, frappe.bold(formatdate(due)), frappe.bold(formatdate(previous))),
+					title=_("Due Dates Out of Order"),
+				)
+			previous = due
 
 	def validate_schedule_not_empty(self):
 		if not self.repayment_schedule:
@@ -226,6 +336,107 @@ class DebtRepaymentSchedule(Document):
 
 	# --- numbers ------------------------------------------------------------
 
+	def validate_live_schedule(self):
+		"""Refuse anything that only makes sense on the facility's live schedule.
+
+		Payments belong to the one schedule that currently represents what is
+		owed. Recording them against a draft, a superseded revision or a
+		cancelled document would put the money somewhere nothing reads, and the
+		facility's figures would never see it.
+		"""
+		if self.docstatus == 1 and self.is_active and self.status == "Active":
+			return
+
+		frappe.throw(
+			_("{0} is not the live schedule for {1}, so payments cannot be recorded against it.").format(
+				frappe.bold(self.name), frappe.bold(self.loan)
+			),
+			title=_("Not the Live Schedule"),
+		)
+
+	def apply_derived_balances(self):
+		"""Recompute the ledger columns on schedules that were not generated here.
+
+		Imported rows and manual ones carry the bank's principal and interest
+		but no balances, or balances typed by hand that quietly stop agreeing
+		after an edit. Deriving them on every save keeps the outstanding,
+		instalment and closing columns following from the amounts beside them.
+
+		Generated schedules are left alone: the engine already produced their
+		balances, and recomputing would be a no-op at best.
+		"""
+		if self.docstatus != 0 or not self.repayment_schedule:
+			return
+
+		if self.schedule_source not in DERIVED_BALANCE_SOURCES and self.repayment_method != MANUAL:
+			return
+
+		derived = derive_balances(
+			[row.as_dict() for row in self.repayment_schedule],
+			self.disbursed_amount,
+			capitalised_periods=self.capitalised_periods(),
+		)
+
+		for row, values in zip(self.repayment_schedule, derived, strict=True):
+			row.outstanding_principal = values["outstanding_principal"]
+			row.instalment_amount = values["instalment_amount"]
+			row.closing_principal = values["closing_principal"]
+
+	def capitalised_periods(self):
+		"""Leading instalments whose interest is rolled up rather than billed."""
+		if self.moratorium_type != INTEREST_CAPITALISED:
+			return 0
+
+		return get_moratorium_periods(self.moratorium_months, self.repayment_frequency or "Monthly")
+
+	def validate_settled_instalments_carried_over(self):
+		"""A revision must not lose a repayment the schedule it replaces recorded.
+
+		Regenerating a schedule is how a rate revision or a restructure is
+		handled, and the new rows are matched to the old ones by due date. If
+		the schedule being superseded has instalments marked paid, the
+		replacement has to agree they were paid, or the facility would show
+		money owing that the bank has already received.
+		"""
+		live = self.get_live_schedule()
+		if not live:
+			return
+
+		settled = {
+			getdate(row.due_date)
+			for row in live.repayment_schedule
+			if row.payment_status in ("Paid", "Partially Paid") and row.due_date
+		}
+		if not settled:
+			return
+
+		paid_here = {
+			getdate(row.due_date)
+			for row in self.repayment_schedule
+			if row.payment_status == "Paid" and row.due_date
+		}
+		missing = sorted(settled - paid_here)
+
+		if missing:
+			frappe.throw(
+				_(
+					"{0} already records these instalments as settled: {1}. Mark them Paid here before submitting, or the repayments would be lost."
+				).format(
+					frappe.bold(live.name),
+					frappe.bold(", ".join(formatdate(due) for due in missing)),
+				),
+				title=_("Settled Instalments Not Carried Over"),
+			)
+
+	def get_live_schedule(self):
+		"""The facility's currently active schedule, if it is not this one."""
+		name = frappe.db.get_value(
+			"Debt Repayment Schedule",
+			{"loan": self.loan, "is_active": 1, "docstatus": 1, "name": ("!=", self.name)},
+			"name",
+		)
+		return frappe.get_doc("Debt Repayment Schedule", name) if name else None
+
 	def calculate_totals(self):
 		"""Roll the rows up into the document totals.
 
@@ -270,6 +481,10 @@ class DebtRepaymentSchedule(Document):
 		facility on "As per Bank Schedule (Manual)" generates nothing by
 		design; its rows come from the bank's own annexure.
 		"""
+		# run_doc_method checks read permission only, so a mutating method has
+		# to assert write access itself or any reader could call it.
+		self.check_permission("write")
+
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft schedule can be generated."), title=_("Not a Draft"))
 
@@ -315,6 +530,10 @@ class DebtRepaymentSchedule(Document):
 	@frappe.whitelist()
 	def clear_schedule(self):
 		"""Empty the child table and reset the totals with it."""
+		# run_doc_method checks read permission only, so a mutating method has
+		# to assert write access itself or any reader could call it.
+		self.check_permission("write")
+
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft schedule can be cleared."), title=_("Not a Draft"))
 
@@ -373,7 +592,6 @@ class DebtRepaymentSchedule(Document):
 				(
 					"total_payable",
 					"total_interest_payable",
-					"outstanding_principal",
 					"total_principal_paid",
 					"total_interest_paid",
 					"next_due_amount",
@@ -381,6 +599,11 @@ class DebtRepaymentSchedule(Document):
 				0,
 			)
 			values["next_due_date"] = None
+			# Losing the schedule does not repay the loan. Without a schedule
+			# the facility still owes what it drew, so the balance goes back to
+			# the disbursed amount rather than to zero, which would read as a
+			# settled debt.
+			values["outstanding_principal"] = flt(facility.disbursed_amount)
 		else:
 			next_due = self.get_next_due_instalment()
 			values = {
@@ -417,12 +640,21 @@ class DebtRepaymentSchedule(Document):
 	):
 		"""Settle one instalment and roll the change through to the facility.
 
+		This is the "entry already posted" path: the accountant has booked the
+		repayment themselves and is telling the schedule about it. Nothing is
+		posted here, and entry_posted_by_system stays 0 so a later cancellation
+		leaves their journal alone.
+
 		A receipt short of the instalment leaves the row Partially Paid; the
 		shortfall keeps the row in the running for next-due. Overpayment is
 		refused rather than absorbed: money beyond the instalment is a
 		prepayment, which changes the rest of the schedule and belongs in
 		Recalculate from Instalment, not in a single row.
 		"""
+		self.check_permission("write")
+		self.reload()
+		self.validate_live_schedule()
+
 		row = self.get_instalment(instalment_number)
 
 		if row.payment_status in ("Paid", "Waived"):
@@ -449,6 +681,11 @@ class DebtRepaymentSchedule(Document):
 				title=_("Overpayment"),
 			)
 
+		validate_settlement_date(paid_date, row.due_date, row.instalment_number)
+
+		if error := journal_entry_reference_error(payment_entry, self.company):
+			frappe.throw(error, title=_("Unusable Journal Entry Reference"))
+
 		settled = abs(paid_amount - due) <= RECONCILIATION_TOLERANCE
 		values = {
 			"payment_status": "Paid" if settled else "Partially Paid",
@@ -456,6 +693,9 @@ class DebtRepaymentSchedule(Document):
 			"paid_amount": paid_amount,
 			"payment_entry": payment_entry,
 			"remarks": remarks,
+			# This app did not post the entry, so cancelling the schedule must
+			# never reverse it.
+			"entry_posted_by_system": 0,
 		}
 		self.apply_row_values(row, values)
 
@@ -477,6 +717,11 @@ class DebtRepaymentSchedule(Document):
 		Leave either override blank to keep the facility's current rate and the
 		balance the schedule already shows at that point.
 		"""
+		self.check_permission("write")
+
+		if self.docstatus == 1:
+			self.validate_live_schedule()
+
 		index = self.get_instalment_index(instalment_number)
 		tail = self.repayment_schedule[index:]
 
@@ -600,7 +845,502 @@ class DebtRepaymentSchedule(Document):
 		for fieldname in self.TOTAL_FIELDS:
 			self.db_set(fieldname, flt(self.get(fieldname)))
 
+	# --- posting ------------------------------------------------------------
+
+	@frappe.whitelist()
+	def make_payment_entry(
+		self,
+		instalment_number,
+		posting_date,
+		bank_account=None,
+		reference_no=None,
+		loan_account=None,
+		interest_account=None,
+	):
+		"""Post one instalment's repayment to the ledger and mark the row Paid.
+
+		This is the other half of mark_instalment_paid: there the accountant
+		has already booked the entry, here the app books it. Either way the row
+		ends up Paid, but only this path sets entry_posted_by_system, because
+		only this path may reverse the entry later.
+
+		The row is locked for the length of the transaction before anything is
+		read off it. Two people pressing the button on the same instalment
+		would otherwise both find it unpaid and post the repayment twice.
+		"""
+		self.check_permission("write")
+		self.reload()
+		self.validate_live_schedule()
+
+		index = self.get_instalment_index(instalment_number)
+		row = self.repayment_schedule[index]
+
+		# Locks this child row until the transaction ends.
+		status = frappe.db.get_value(
+			"Debt Repayment Schedule Detail", row.name, "payment_status", for_update=True
+		)
+		if status not in PAYABLE_STATUSES:
+			frappe.throw(
+				_("Instalment {0} is {1}, so no payment can be posted against it.").format(
+					row.instalment_number, _(status)
+				),
+				title=_("Not Payable"),
+			)
+
+		validate_settlement_date(posting_date, row.due_date, row.instalment_number)
+
+		facility = frappe.get_doc("Debt Facility", self.loan)
+		reference_no = reference_no or f"{self.name}/{row.instalment_number}"
+		capitalised = self.is_capitalised_row(index, row)
+		accounts = self.resolve_posting_accounts(facility, loan_account, interest_account)
+
+		if capitalised:
+			voucher_type = "Journal Entry"
+			lines = self.capitalisation_lines(row, accounts)
+		else:
+			voucher_type = "Bank Entry"
+			lines = self.repayment_lines(facility, row, bank_account, accounts)
+
+		entry = make_journal_entry(
+			company=self.company,
+			posting_date=posting_date,
+			voucher_type=voucher_type,
+			reference_no=reference_no,
+			remark=_("Instalment {0} of {1}").format(row.instalment_number, self.loan),
+			loan_provider=self.loan_provider,
+			lines=lines,
+		)
+
+		for fieldname, value in (
+			("payment_status", "Paid"),
+			("paid_date", getdate(posting_date)),
+			("paid_amount", flt(row.instalment_amount)),
+			("payment_entry", entry),
+			("entry_posted_by_system", 1),
+		):
+			row.db_set(fieldname, value)
+
+		self.reload()
+		self.refresh_totals()
+		self.update_facility()
+		return entry
+
+	@frappe.whitelist()
+	def reverse_payment(self, instalment_number):
+		"""Undo one settled instalment, cancelling the entry if this app posted it.
+
+		The row is cleared before the Journal Entry is cancelled, and the order
+		matters. Frappe's cancel-time link check looks for submitted documents
+		pointing at the entry, and it reads the *child row's* own docstatus,
+		which on a submitted schedule is 1. While the row still holds the link
+		the entry cannot be cancelled; once cleared, it can.
+
+		An entry somebody recorded by hand is left alone -- this app did not
+		post it and has no business reversing it -- and only the row is reset.
+		"""
+		self.check_permission("write")
+		self.reload()
+		self.validate_live_schedule()
+
+		row = self.get_instalment(instalment_number)
+
+		if row.payment_status not in ("Paid", "Partially Paid"):
+			frappe.throw(
+				_("Instalment {0} is {1}. There is nothing to reverse.").format(
+					row.instalment_number, _(row.payment_status)
+				),
+				title=_("Nothing to Reverse"),
+			)
+
+		entry = row.payment_entry if row.entry_posted_by_system else None
+
+		for fieldname, value in (
+			("payment_status", "Unpaid"),
+			("paid_date", None),
+			("paid_amount", 0),
+			("payment_entry", None),
+			("entry_posted_by_system", 0),
+		):
+			row.db_set(fieldname, value)
+
+		cancelled = cancel_journal_entries([entry])
+
+		self.reload()
+		self.refresh_totals()
+		self.update_facility()
+		return cancelled[0] if cancelled else None
+
+	def is_capitalised_row(self, index, row):
+		"""Whether this instalment's interest is rolled into the balance, not billed."""
+		return index < self.capitalised_periods() and not flt(row.principal_amount)
+
+	def resolve_posting_accounts(self, facility, loan_account, interest_account):
+		"""Which loan and interest ledgers this entry posts against.
+
+		Each falls back to the facility's own account. An override is checked
+		the same way the facility's field would be, so the dialog cannot post
+		somewhere the facility itself would have refused.
+		"""
+		resolved = {
+			"loan_account": loan_account or facility.loan_liability_account,
+			"interest_account": interest_account or facility.interest_expense_account,
+		}
+
+		if loan_account:
+			validate_ledger_account(
+				loan_account, company=self.company, root_type="Liability", label=_("Loan Account")
+			)
+
+		if interest_account:
+			validate_ledger_account(
+				interest_account,
+				company=self.company,
+				root_type="Expense",
+				label=_("Interest Account"),
+			)
+
+		return resolved
+
+	def capitalisation_lines(self, row, accounts):
+		"""Non-cash lines for an instalment inside a capitalising moratorium.
+
+		No money moves: the interest accrues and is added to what is owed. So
+		the expense is recognised against the loan account rather than a bank
+		account, which is what grows the balance the later instalments repay.
+		"""
+		interest = money(row.interest_amount) + money(row.other_charges)
+
+		if interest == ZERO:
+			frappe.throw(
+				_("Instalment {0} accrues no interest, so there is nothing to capitalise.").format(
+					row.instalment_number
+				),
+				title=_("Nothing to Post"),
+			)
+
+		self.require_posting_account(accounts, "interest_account", _("Interest Account"))
+		self.require_posting_account(accounts, "loan_account", _("Loan Account"))
+
+		return [
+			(accounts["interest_account"], interest, ZERO),
+			(accounts["loan_account"], ZERO, interest),
+		]
+
+	def repayment_lines(self, facility, row, bank_account, accounts):
+		"""Lines for an ordinary repayment: principal and interest out of the bank."""
+		principal = money(row.principal_amount)
+		interest = money(row.interest_amount) + money(row.other_charges)
+		total = principal + interest
+
+		if total != money(row.instalment_amount):
+			frappe.throw(
+				_(
+					"Instalment {0} adds up to {1}, but the row says {2}. Fix the schedule before posting."
+				).format(
+					row.instalment_number,
+					frappe.bold(self.fmt(total)),
+					frappe.bold(self.fmt(row.instalment_amount)),
+				),
+				title=_("Instalment Does Not Add Up"),
+			)
+
+		if principal != ZERO:
+			self.require_posting_account(accounts, "loan_account", _("Loan Account"))
+		if interest != ZERO:
+			self.require_posting_account(accounts, "interest_account", _("Interest Account"))
+
+		bank = self.resolve_bank_account(facility, bank_account)
+		validate_bank_account(
+			bank,
+			company=self.company,
+			loan_account=accounts["loan_account"],
+			label=_("Bank Account"),
+		)
+
+		return [
+			(accounts["loan_account"], principal, ZERO),
+			(accounts["interest_account"], interest, ZERO),
+			(bank, ZERO, total),
+		]
+
+	def require_posting_account(self, accounts, key, label):
+		"""Insist on an account this instalment cannot be posted without."""
+		if accounts.get(key):
+			return
+
+		frappe.throw(
+			_("No {0} to post against. Set one on {1}, or choose one on the payment.").format(
+				label, frappe.bold(self.loan)
+			),
+			title=_("Account Missing"),
+		)
+
+	def resolve_bank_account(self, facility, bank_account):
+		"""The ledger the repayment leaves from, checked before anything is posted.
+
+		Falls back to the facility's Bank Account (Repayment of Loan) and
+		to nothing else. It deliberately does NOT fall back to the receipt bank:
+		money often arrives in one account and is repaid by mandate from
+		another, and quietly crediting the wrong one is the kind of error that
+		reconciles to nobody.
+		"""
+		account = bank_account or facility.repayment_bank_account
+
+		if not account:
+			frappe.throw(
+				_(
+					"No bank account to pay from. Set the Bank Account (Repayment of Loan) on {0}, or choose one on the payment."
+				).format(frappe.bold(facility.name)),
+				title=_("Bank Account Required"),
+			)
+
+		return account
+
+	# --- upload -------------------------------------------------------------
+
+	@frappe.whitelist()
+	def import_schedule(self, file_url):
+		"""Replace the draft's rows with the ones in an uploaded spreadsheet.
+
+		Every problem the file has is reported in one message. A user
+		correcting a bank annexure should see the whole list, not discover the
+		next bad cell after each re-upload.
+
+		Nothing is written until the file parses clean, reconciles against the
+		facility and never drives the balance negative, so a rejected upload
+		leaves the existing rows exactly as they were.
+		"""
+		self.check_permission("write")
+
+		if self.docstatus != 0:
+			frappe.throw(_("Only a draft schedule can be imported into."), title=_("Not a Draft"))
+
+		rows, errors = parse_schedule_rows(
+			read_spreadsheet(file_url),
+			dayfirst=date_format_is_dayfirst(),
+			today=getdate(nowdate()),
+			disbursement_date=self.facility_disbursement_date(),
+		)
+
+		# Parser messages quote raw spreadsheet cells, so they are escaped here.
+		# The two below are built with frappe.bold and escape their own user
+		# text already; escaping them again would print the markup.
+		errors = [escape_html(error) for error in errors]
+		errors.extend(self.reference_errors(rows))
+		errors.extend(self.balance_errors(rows))
+
+		if errors:
+			self.throw_import_errors(errors)
+
+		self.set("repayment_schedule", [])
+		for row in rows:
+			self.append("repayment_schedule", self.import_row(row))
+
+		self.schedule_source = "Imported from Sanction Letter"
+		self.renumber_instalments()
+		self.apply_derived_balances()
+		self.calculate_totals()
+		self.warn_if_schedule_disagrees_with_facility(rows)
+		return len(rows)
+
+	def import_row(self, row):
+		"""One imported row, with the payment fields filled in for a settled one.
+
+		A Paid row is dated by the entry it names, because that is when the
+		money actually moved; without an entry the due date is the best
+		available answer. The amount settled is the instalment itself -- the
+		file records that the instalment was paid, not a part payment.
+		"""
+		values = {
+			"due_date": row["due_date"],
+			"principal_amount": row["principal_amount"],
+			"interest_amount": row["interest_amount"],
+			"payment_status": row["payment_status"],
+			"payment_entry": row["payment_entry"],
+			"entry_posted_by_system": 0,
+		}
+
+		if row["payment_status"] == "Paid":
+			posted_on = (
+				frappe.db.get_value("Journal Entry", row["payment_entry"], "posting_date")
+				if row["payment_entry"]
+				else None
+			)
+			values["paid_date"] = posted_on or row["due_date"]
+			values["paid_amount"] = flt(row["principal_amount"]) + flt(row["interest_amount"])
+
+		return values
+
+	def reference_errors(self, rows):
+		"""Check every Journal Entry the file names is one we can actually use."""
+		errors = []
+
+		for index, row in enumerate(rows, start=1):
+			if not row["payment_entry"]:
+				continue
+
+			if error := journal_entry_reference_error(row["payment_entry"], self.company):
+				errors.append(_("Instalment {0}: {1}").format(index, error))
+
+		return errors
+
+	def balance_errors(self, rows):
+		"""Report the first instalment that would repay more than is outstanding.
+
+		Only the first is reported: once the balance has gone negative every
+		row after it is wrong too, and listing forty of them hides the one that
+		actually needs fixing.
+		"""
+		derived = derive_balances(rows, self.disbursed_amount, capitalised_periods=self.capitalised_periods())
+
+		for index, row in enumerate(derived, start=1):
+			if money(row["closing_principal"]) < ZERO:
+				return [
+					_(
+						"Instalment {0} repays {1} against an outstanding {2}, which would take the balance below zero."
+					).format(
+						index,
+						frappe.bold(self.fmt(row["principal_amount"])),
+						frappe.bold(self.fmt(row["outstanding_principal"])),
+					)
+				]
+
+		return []
+
+	def throw_import_errors(self, errors):
+		"""Show every problem at once, capped so the dialog stays readable."""
+		shown = errors[:MAX_REPORTED_ERRORS]
+		listed = "<br>".join(shown)
+
+		if len(errors) > MAX_REPORTED_ERRORS:
+			listed += "<br>" + _("...and {0} more.").format(len(errors) - MAX_REPORTED_ERRORS)
+
+		frappe.throw(listed, title=_("The File Could Not Be Imported"))
+
+	def warn_if_schedule_disagrees_with_facility(self, rows):
+		"""Flag, without blocking, a schedule that does not match the facility.
+
+		A sanction letter can legitimately disagree -- a part disbursement, or
+		a bank that rounds its own annexure -- so this warns rather than
+		refuses. Submission still enforces the reconciliation.
+		"""
+		principal = sum((money(row["principal_amount"]) for row in rows), ZERO)
+		disbursed = money(self.disbursed_amount)
+
+		if principal != disbursed:
+			frappe.msgprint(
+				_("The imported rows repay {0}, but {1} was disbursed.").format(
+					frappe.bold(self.fmt(principal)), frappe.bold(self.fmt(disbursed))
+				),
+				title=_("Principal Does Not Match"),
+				indicator="orange",
+			)
+
+		expected = int(self.number_of_instalments or 0)
+		if expected and len(rows) != expected:
+			frappe.msgprint(
+				_("The file has {0} instalments, but the facility says {1}.").format(
+					frappe.bold(len(rows)), frappe.bold(expected)
+				),
+				title=_("Instalment Count Does Not Match"),
+				indicator="orange",
+			)
+
+	def facility_disbursement_date(self):
+		date = frappe.db.get_value("Debt Facility", self.loan, "disbursement_date") if self.loan else None
+		return getdate(date) if date else None
+
 	def fmt(self, value):
 		"""Format an amount in the facility's company currency for a message."""
 		currency = frappe.get_cached_value("Company", self.company, "default_currency")
 		return frappe.utils.fmt_money(flt(value), currency=currency)
+
+
+# --- spreadsheet helpers ----------------------------------------------------
+
+
+def date_format_is_dayfirst() -> bool:
+	"""Whether this site writes the day before the month.
+
+	A bare "05-08-2025" is two different dates depending on the answer, and the
+	only defensible source is the site's own setting: a file exported from here
+	then reads back as what it was written as. Indian sites default to
+	day-first, which is also the fallback when the setting is unreadable.
+	"""
+	fmt = (frappe.get_system_settings("date_format") or "dd-mm-yyyy").lower()
+
+	if "d" in fmt and "m" in fmt:
+		return fmt.index("d") < fmt.index("m")
+
+	return True
+
+
+def read_spreadsheet(file_url):
+	"""Rows from an uploaded .xlsx or .csv, as lists of cells.
+
+	The File is loaded as a document and permission-checked before a byte is
+	read: a file_url is guessable, and this method would otherwise read any
+	attachment on the site. Content is taken as raw bytes, because letting
+	frappe decode it would corrupt the zip an xlsx really is.
+	"""
+	file_doc = frappe.get_doc("File", {"file_url": file_url})
+	file_doc.check_permission("read")
+
+	content = file_doc.get_content(encodings=[])
+	name = (file_doc.file_name or file_url).lower()
+
+	if name.endswith(".csv"):
+		return read_csv_content(content)
+
+	if name.endswith((".xlsx", ".xlsm")):
+		return read_xlsx_file_from_attached_file(fcontent=content)
+
+	frappe.throw(
+		_("{0} is not a spreadsheet. Upload an .xlsx or .csv file.").format(
+			frappe.bold(frappe.utils.escape_html(file_doc.file_name or file_url))
+		),
+		title=_("Unsupported File"),
+	)
+
+
+@frappe.whitelist()
+def download_schedule_template(schedule=None):
+	"""Send the upload template, optionally filled with a schedule's own rows.
+
+	Round-tripping is the point: a user downloads the template for a schedule,
+	edits it and uploads it back, so the due date column carries a real date
+	format rather than a serial number or a date-time, and the parser reads
+	back what this wrote.
+	"""
+	rows = []
+
+	if schedule:
+		doc = frappe.get_doc("Debt Repayment Schedule", schedule)
+		doc.check_permission("read")
+		rows = [
+			[
+				getdate(row.due_date) if row.due_date else None,
+				flt(row.principal_amount),
+				flt(row.interest_amount),
+				row.payment_status,
+				row.payment_entry,
+			]
+			for row in doc.repayment_schedule
+		]
+
+	data = [[_(label) for _fieldname, label in TEMPLATE_COLUMNS], *rows]
+
+	xlsx = make_xlsx(
+		data,
+		"Repayment Schedule",
+		column_widths=[14, 18, 16, 12, 24],
+		styles={
+			# A date column, not a date-time one: the instalment falls due on a
+			# day, and a trailing 00:00:00 only invites a parsing argument.
+			"styles": [{"num_format": "dd-mm-yyyy"}, {"bold": True}],
+			"column_styles": {0: [0]},
+			"row_styles": {0: [1]},
+		},
+	)
+
+	provide_binary_file(schedule or "Repayment Schedule Template", "xlsx", xlsx.getvalue())

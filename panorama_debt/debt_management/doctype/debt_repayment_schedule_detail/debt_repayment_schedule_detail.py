@@ -16,6 +16,7 @@ class DebtRepaymentScheduleDetail(Document):
 
 		closing_principal: DF.Currency
 		due_date: DF.Date
+		entry_posted_by_system: DF.Check
 		instalment_amount: DF.Currency
 		instalment_number: DF.Int
 		interest_amount: DF.Currency
